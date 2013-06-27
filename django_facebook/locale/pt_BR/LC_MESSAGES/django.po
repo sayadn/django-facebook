@@ -1,0 +1,61 @@
+# django-facebook Portuguese (Brazilian) translation.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# Alisson Patricio <eu@alisson.net>, 2013.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: django-facebook\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2013-06-24 08:54-0300\n"
+"PO-Revision-Date: 2013-06-24 09:21-0300\n"
+"Last-Translator: Alisson Patricio <eu@alisson.net>\n"
+"Language: Portuguese (Brazilian)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#: forms.py:22
+msgid "Username"
+msgstr "Nome de usuário"
+
+#: forms.py:23
+msgid "This value must contain only letters, numbers and underscores."
+msgstr "Este valor deve contar apenas letras, números e sublinhado."
+
+#: forms.py:26
+msgid "Email address"
+msgstr "E-mail"
+
+#: forms.py:29
+msgid "Password"
+msgstr "Senha"
+
+#: forms.py:32
+msgid "Password (again)"
+msgstr "Senha (novamente)"
+
+#: forms.py:46
+msgid "A user with that username already exists."
+msgstr "Este nome de usuário já esta sendo usado por outro usuário."
+
+#: forms.py:58
+msgid "The two password fields didn't match."
+msgstr "As duas senhas precisam ser iguais."
+
+#: forms.py:68
+msgid ""
+"This email address is already in use. Please supply a different email "
+"address."
+msgstr "Este endereço de e-mail já esta sendo usado. Por favor, forneça um e-mail diferente."
+
+#: views.py:108
+#, python-format
+msgid "You have connected your account to %s's facebook profile"
+msgstr "Você conectou sua conta com seu perfil %s do Facebook"
+
+#: views.py:128
+msgid "You have disconnected your Facebook profile."
+msgstr "Você desconectou sua conta do seu perfil do Facebook"
