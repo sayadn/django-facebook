@@ -1,7 +1,6 @@
 from django.conf import settings
 from django.contrib.contenttypes import generic
 from django.contrib.contenttypes.models import ContentType
-from django.core.urlresolvers import reverse
 from django.db import models
 from django.db.models.base import ModelBase
 from django_facebook import model_managers, settings as facebook_settings
@@ -479,7 +478,7 @@ class OpenGraphShare(BaseModel):
 
     def save(self, *args, **kwargs):
         if self.user and not self.facebook_user_id:
-            profile = self.user.get_profile()
+            profile = try_get_profile(self.user)
             self.facebook_user_id = get_user_attribute(
                 self.user, profile, 'facebook_id')
         return BaseModel.save(self, *args, **kwargs)
@@ -572,9 +571,10 @@ class OpenGraphShare(BaseModel):
         '''
         Update the share with the given data
         '''
-        result = None
-        profile = self.user.get_profile()
-        graph = graph or profile.get_offline_graph()
+        profile = try_get_profile(self.user)
+        user_or_profile = get_instance_for_attribute(
+            self.user, profile, 'access_token')
+        graph = graph or user_or_profile.get_offline_graph()
 
         # update the share dict so a retry will do the right thing
         # just in case we fail the first time
@@ -583,16 +583,17 @@ class OpenGraphShare(BaseModel):
 
         # broadcast the change to facebook
         if self.share_id:
-            result = graph.set(self.share_id, **shared)
-
-        return result
+            return graph.set(self.share_id, **shared)
 
     def remove(self, graph=None):
         if not self.share_id:
             raise ValueError('Can only delete shares which have an id')
         # see if the graph is enabled
-        profile = self.user.get_profile()
-        graph = graph or profile.get_offline_graph()
+        profile = try_get_profile(self.user)
+        user_or_profile = get_instance_for_attribute(
+            self.user, profile, 'access_token')
+        graph = graph or user_or_profile.get_offline_graph()
+
         response = None
         if graph:
             response = graph.delete(self.share_id)
@@ -656,10 +657,15 @@ class FacebookInvite(CreatedAtAbstractBase):
 
     def resend(self, graph=None):
         from django_facebook.invite import post_on_profile
+
+        profile = try_get_profile(self.user)
+        user_or_profile = get_instance_for_attribute(
+            self.user, profile, 'access_token')
+        graph = graph or user_or_profile.get_offline_graph()
+
         if not graph:
-            graph = self.user.get_profile().get_offline_graph()
-            if not graph:
-                return
+            return
+
         facebook_id = self.user_invited
         invite_result = post_on_profile(
             self.user, graph, facebook_id, self.message, force_send=True)
