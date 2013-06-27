@@ -1,17 +1,15 @@
-from django.conf import settings
 from django.contrib import messages
-from django.http import Http404
 from django.shortcuts import render_to_response
 from django.template.context import RequestContext
 from django.utils.translation import ugettext as _
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
 from django_facebook import exceptions as facebook_exceptions, \
     settings as facebook_settings
 from django_facebook.connect import CONNECT_ACTIONS, connect_user
 from django_facebook.decorators import facebook_required_lazy
 from django_facebook.utils import next_redirect, get_registration_backend, \
-    to_bool, error_next_redirect, get_instance_for
+    to_bool, get_instance_for, try_get_profile, \
+    get_instance_for_attribute
 from open_facebook import exceptions as open_facebook_exceptions
 from open_facebook.utils import send_warning
 import logging
@@ -126,9 +124,14 @@ def disconnect(request):
     if request.method == 'POST':
         messages.info(
             request, _("You have disconnected your Facebook profile."))
-        profile = request.user.get_profile()
-        profile.disconnect_facebook()
-        profile.save()
+
+        user = request.user
+        profile = try_get_profile(user)
+        user_or_profile = get_instance_for_attribute(user, profile,
+            'access_token')
+
+        user_or_profile.disconnect_facebook()
+        user_or_profile.save()
     response = next_redirect(request)
     return response
 
