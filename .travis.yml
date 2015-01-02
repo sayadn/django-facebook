@@ -1,32 +1,34 @@
 language: python
 python:
-  - 2.6
-  - 2.7
+  - 2.7.8
+  - 3.4.1
+notifications:
+  email:
+    - thierryschellenbach@gmail.com
 env:
   # test the standalone functionality
-  - DJANGO=1.3.7 CUSTOM_USER_MODEL=0 MODE=standalone REQUIREMENTS=development SETTINGS=facebook_example.settings TESTS=django_facebook open_facebook
-  - DJANGO=1.4.5 CUSTOM_USER_MODEL=0 MODE=standalone REQUIREMENTS=development SETTINGS=facebook_example.settings TESTS=django_facebook open_facebook
-  - DJANGO=1.5.1 CUSTOM_USER_MODEL=0 MODE=standalone REQUIREMENTS=development SETTINGS=facebook_example.settings TESTS=django_facebook open_facebook
-  - DJANGO=1.5.1 CUSTOM_USER_MODEL=1 MODE=standalone REQUIREMENTS=development SETTINGS=facebook_example.settings TESTS=django_facebook open_facebook
-  # test django registration integration
-  - DJANGO=1.4.5 CUSTOM_USER_MODEL=0 MODE=django_registration REQUIREMENTS=django_registration SETTINGS=facebook_example.settings TESTS=django_facebook open_facebook
-  # userena currently doesn't support testing :(
-  - DJANGO=1.5.1 CUSTOM_USER_MODEL=0 MODE=userena REQUIREMENTS=userena SETTINGS=facebook_example.settings TESTS=django_facebook open_facebook
+  - DJANGO=1.6.8 CUSTOM_USER_MODEL=0 MODE=standalone REQUIREMENTS=development6 SETTINGS=facebook_example.settings TESTS=django_facebook open_facebook
+  - DJANGO=1.6.8 CUSTOM_USER_MODEL=1 MODE=standalone REQUIREMENTS=development6 SETTINGS=facebook_example.settings TESTS=django_facebook open_facebook
+  - DJANGO=1.7.1 CUSTOM_USER_MODEL=0 MODE=standalone REQUIREMENTS=development7 SETTINGS=facebook_example.settings TESTS=django_facebook open_facebook
+  - DJANGO=1.7.1 CUSTOM_USER_MODEL=1 MODE=standalone REQUIREMENTS=development7 SETTINGS=facebook_example.settings TESTS=django_facebook open_facebook
 postgres:
   adapter: sqlite3
   database: django_fb_test
 install:
+  # faster than installing PIL manually
   - pip install pep8 --use-mirrors
-  - pip install coverage
+  - pip install coverage --use-mirrors
+  - pip install python-coveralls --use-mirrors
   - pip install https://github.com/dcramer/pyflakes/tarball/master
   - python setup.py install
-  - pip install -r facebook_example/requirements/$REQUIREMENTS.txt --use-mirrors -I
+  - pip install -r facebook_example/requirements/$REQUIREMENTS.txt --use-mirrors -I --allow-all-external
   - pip install -q Django==$DJANGO --use-mirrors -I
 before_script:
-  - "pep8 --exclude=migrations --ignore=E501,E225 django_facebook open_facebook"
+  - "pep8 --exclude=south_migrations --ignore=E501,E225,W293 django_facebook open_facebook"
 #  - pyflakes -x W src
 script:
   - pip install -e .
   - cd facebook_example
   - coverage run manage.py test $TESTS --settings=$SETTINGS -v2
-  - coverage report
+after_success:
+  - coveralls

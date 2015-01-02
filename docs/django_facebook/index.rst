@@ -1,7 +1,5 @@
-.. _api:
-
 Django Facebook
-=============================
+===============
 
 .. toctree::
    :maxdepth: 2
@@ -12,11 +10,8 @@ Django Facebook
    decorators
    exceptions
    forms
-   middleware
    models
    registration_backends
-   settings
-   signals
    tasks
    utils
    views

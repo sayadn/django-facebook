@@ -1,10 +1,17 @@
-
 '''
 Facebook error classes also see
 http://fbdevwiki.com/wiki/Error_codes#User_Permission_Errors
 '''
+from __future__ import unicode_literals
+
 import ssl
-import urllib2
+
+try:
+    # python 2 imports
+    from urllib2 import HTTPError, URLError
+except ImportError:
+    # python 3 imports
+    from urllib.error import HTTPError, URLError
 
 
 class OpenFacebookException(Exception):
@@ -88,6 +95,7 @@ class FeedActionLimit(UserPermissionException):
 
 
 class OpenGraphException(OpenFacebookException):
+
     '''
     Raised when we get error 3502, representing a problem with facebook
     open graph data on the page
@@ -136,11 +144,11 @@ class FacebookSSLError(FacebookUnreachable, ssl.SSLError):
     pass
 
 
-class FacebookHTTPError(FacebookUnreachable, urllib2.HTTPError):
+class FacebookHTTPError(FacebookUnreachable, HTTPError):
     pass
 
 
-class FacebookURLError(FacebookUnreachable, urllib2.URLError):
+class FacebookURLError(FacebookUnreachable, URLError):
     pass
 
 
@@ -152,9 +160,9 @@ def map_unreachable_exception(e):
     exception_class = FacebookUnreachable
     if isinstance(e, ssl.SSLError):
         exception_class = FacebookSSLError
-    elif isinstance(e, urllib2.HTTPError):
+    elif isinstance(e, HTTPError):
         exception_class = FacebookHTTPError
-    elif isinstance(e, urllib2.URLError):
+    elif isinstance(e, URLError):
         exception_class = FacebookURLError
     return exception_class
 
@@ -165,7 +173,7 @@ def convert_unreachable_exception(e, error_format='Facebook is unreachable %s'):
     FacebookUnreachable allowing code to easily try except this
     '''
     exception_class = map_unreachable_exception(e)
-    error_message = error_format % e.message
+    error_message = error_format % str(e)
     exception = exception_class(error_message)
     return exception
 

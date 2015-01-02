@@ -3,6 +3,12 @@ import re
 import sys
 import functools
 
+from django.utils import six
+try:
+    unicode = unicode
+except NameError:
+    unicode = str
+
 logger = logging.getLogger(__name__)
 URL_PARAM_RE = re.compile('(?P<k>[^(=|&)]+)=(?P<v>[^&]+)(&|$)')
 URL_PARAM_NO_VALUE_RE = re.compile('(?P<k>[^(&|?)]+)(&|$)')
@@ -76,7 +82,7 @@ def smart_str(s, encoding='utf-8', strings_only=False, errors='strict'):
     import types
     if strings_only and isinstance(s, (types.NoneType, int)):
         return s
-    elif not isinstance(s, basestring):
+    elif not isinstance(s, six.string_types):
         try:
             return str(s)
         except UnicodeEncodeError:
@@ -119,8 +125,8 @@ def send_warning(message, request=None, e=None, **extra_data):
     data.update(extra_data)
     logger.warn(message,
                 exc_info=sys.exc_info(), extra={
-                'request': request,
-                'data': data
+                    'request': request,
+                    'data': data
                 })
 
 
@@ -189,6 +195,7 @@ class memoized(object):
     If called later with the same arguments, the cached value is returned
     (not reevaluated).
     '''
+
     def __init__(self, func):
         self.func = func
         self.cache = {}

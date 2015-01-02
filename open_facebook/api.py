@@ -1,17 +1,14 @@
 # -*- coding: utf-8 -*-
 '''
 
-Open Facebook - Pythonic access to the open graph
-=================================================
-
 Open Facebook allows you to use Facebook's open graph API with simple python code
 
-**Features**:
+**Features**
 
-* Supported and maintained
-* Tested so people can contribute
-* Facebook exceptions are mapped
-* Logging
+    * Supported and maintained
+    * Tested so people can contribute
+    * Facebook exceptions are mapped
+    * Logging
 
 
 **Basic examples**::
@@ -83,18 +80,30 @@ understand the required functionality
 
 
 '''
+
 from django.http import QueryDict
+from django.utils import six
+from django.utils.http import urlencode
 from django_facebook import settings as facebook_settings
 from open_facebook import exceptions as facebook_exceptions
 from open_facebook.utils import json, encode_params, send_warning, memoized, \
     stop_statsd, start_statsd
 import logging
-import urllib
-import urllib2
+
 from django_facebook.utils import to_int
 import ssl
 import re
-from urlparse import urlparse
+
+try:
+    # python 2 imports
+    from urlparse import urlparse
+    from urllib2 import build_opener, HTTPError, URLError
+except ImportError:
+    # python 3 imports
+    from urllib.error import HTTPError, URLError
+    from urllib.parse import urlparse
+    from urllib.request import build_opener
+
 logger = logging.getLogger(__name__)
 
 
@@ -134,7 +143,7 @@ class FacebookConnection(object):
         api_base_url = cls.old_api_url if old_api else cls.api_url
         if getattr(cls, 'access_token', None):
             params['access_token'] = cls.access_token
-        url = '%s%s?%s' % (api_base_url, path, urllib.urlencode(params))
+        url = '%s%s?%s' % (api_base_url, path, urlencode(params))
         response = cls._request(url, post_data)
         return response
 
@@ -155,7 +164,7 @@ class FacebookConnection(object):
             return response
 
         # nicely identify ourselves before sending the request
-        opener = urllib2.build_opener()
+        opener = build_opener()
         opener.addheaders = [('User-agent', 'Open Facebook Python')]
 
         # get the statsd path to track response times with
@@ -170,7 +179,7 @@ class FacebookConnection(object):
             extended_timeout = timeout * timeout_mp
             response_file = None
             encoded_params = encode_params(post_data) if post_data else None
-            post_string = (urllib.urlencode(encoded_params)
+            post_string = (urlencode(encoded_params)
                            if post_data else None)
             try:
                 start_statsd('facebook.%s' % statsd_path)
@@ -179,7 +188,7 @@ class FacebookConnection(object):
                     response_file = opener.open(
                         url, post_string, timeout=extended_timeout)
                     response = response_file.read().decode('utf8')
-                except (urllib2.HTTPError,), e:
+                except (HTTPError,) as e:
                     response_file = e
                     response = response_file.read().decode('utf8')
                     # Facebook sents error codes for many of their flows
@@ -190,10 +199,10 @@ class FacebookConnection(object):
                     server_error = cls.is_server_error(e, response)
                     if server_error:
                         # trigger a retry
-                        raise urllib2.URLError(
+                        raise URLError(
                             'Facebook is down %s' % response)
                 break
-            except (urllib2.HTTPError, urllib2.URLError, ssl.SSLError), e:
+            except (HTTPError, URLError, ssl.SSLError) as e:
                 # These are often temporary errors, so we will retry before
                 # failing
                 error_format = 'Facebook encountered a timeout (%ss) or error %s'
@@ -219,7 +228,7 @@ class FacebookConnection(object):
         try:
             parsed_response = json.loads(response)
             logger.info('facebook send response %s' % parsed_response)
-        except Exception, e:
+        except Exception as e:
             # using exception because we need to support multiple json libs :S
             parsed_response = QueryDict(response, True)
             logger.info('facebook send response %s' % parsed_response)
@@ -361,7 +370,7 @@ class FacebookConnection(object):
                     if error_code and start <= error_code <= stop:
                         matching_error_class = class_
                         logger.info('Matched error on code %s', code)
-                elif isinstance(code, (int, long)):
+                elif isinstance(code, (int, six.integer_types)):
                     if int(code) == error_code:
                         matching_error_class = class_
                         logger.info('Matched error on code %s', code)
@@ -502,8 +511,8 @@ class FacebookAuthorization(FacebookConnection):
         response = cls.request('oauth/access_token', **kwargs)
         return response['access_token']
 
-    @classmethod
     @memoized
+    @classmethod
     def get_cached_app_access_token(cls):
         '''
         Caches the access token in memory, good for speeding up testing
@@ -643,8 +652,9 @@ class OpenFacebook(FacebookConnection):
         print graph.get('me')
 
     '''
+
     def __init__(self, access_token=None, prefetched_data=None,
-                 expires=None, current_user_id=None):
+                 expires=None, current_user_id=None, version=None):
         '''
             :param access_token:
                 The facebook Access token
@@ -660,6 +670,29 @@ class OpenFacebook(FacebookConnection):
         # facebook connection to a logged in user :)
         self.current_user_id = current_user_id
 
+        if version is None:
+            version = 'v1.0'
+        self.version = version
+
+    def __getstate__(self):
+        '''
+        Turns the object into something easy to serialize
+        '''
+        state = dict(
+            access_token=self.access_token,
+            prefetched_data=self.prefetched_data,
+            expires=self.expires,
+        )
+        return state
+
+    def __setstate__(self, state):
+        '''
+        Restores the object from the state dict
+        '''
+        self.access_token = state['access_token']
+        self.prefetched_data = state['prefetched_data']
+        self.expires = state['expires']
+
     def is_authenticated(self):
         '''
         Ask facebook if we have access to the users data
@@ -668,14 +701,14 @@ class OpenFacebook(FacebookConnection):
         '''
         try:
             me = self.me()
-        except facebook_exceptions.OpenFacebookException, e:
+        except facebook_exceptions.OpenFacebookException as e:
             if isinstance(e, facebook_exceptions.OAuthException):
                 raise
             me = None
         authenticated = bool(me)
         return authenticated
 
-    def get(self, path, **kwargs):
+    def get(self, path, version=None, **kwargs):
         '''
         Make a Facebook API call
 
@@ -689,6 +722,8 @@ class OpenFacebook(FacebookConnection):
 
         :returns:  dict
         '''
+        version = version or self.version
+        kwargs['version'] = version
         response = self.request(path, **kwargs)
         return response
 
@@ -710,7 +745,7 @@ class OpenFacebook(FacebookConnection):
         kwargs['ids'] = ','.join(ids)
         return self.request(**kwargs)
 
-    def set(self, path, params=None, **post_data):
+    def set(self, path, params=None, version=None, **post_data):
         '''
         Write data to facebook
 
@@ -729,11 +764,13 @@ class OpenFacebook(FacebookConnection):
 
         :returns:  dict
         '''
+        version = version or self.version
         assert self.access_token, 'Write operations require an access token'
         if not params:
             params = {}
         params['method'] = 'post'
 
+        params['version'] = version
         response = self.request(path, post_data=post_data, **params)
         return response
 
@@ -822,16 +859,30 @@ class OpenFacebook(FacebookConnection):
 
         :returns: dict
         '''
+        permissions_dict = {}
         try:
             permissions = {}
             permissions_response = self.get('me/permissions')
-            if permissions_response.get('data'):
-                permissions = permissions_response['data'][0]
-        except facebook_exceptions.OAuthException:
-            permissions = {}
-        permissions_dict = dict([(k, bool(int(v)))
+
+            # determine whether we're dealing with 1.0 or 2.0+
+            for permission in permissions_response.get('data', []):
+                # graph api 2.0+, returns multiple dicts with keys 'status' and 'permission'
+                if any(value in ['granted', 'declined'] for value in permission.values()):  
+                    for perm in permissions_response['data']:
+                        grant = perm.get('status') == 'granted'
+                        name = perm.get('permission')
+                        if grant and name:  # just in case something goes sideways
+                            permissions_dict[name] = grant
+                # graph api 1.0, returns single dict as {permission: intval}
+                elif any(value in [0, 1, '0', '1'] for value in permission.values()):  
+                    permissions = permissions_response['data'][0]
+                    permissions_dict = dict([(k, bool(int(v)))
                                  for k, v in permissions.items()
                                  if v == '1' or v == 1])
+                break
+        except facebook_exceptions.OAuthException:
+            pass
+
         return permissions_dict
 
     def has_permissions(self, required_permissions):
@@ -856,7 +907,7 @@ class OpenFacebook(FacebookConnection):
                 has_permissions = False
         return has_permissions
 
-    def my_image_url(self, size=None):
+    def my_image_url(self, size='large'):
         '''
         Returns the image url from your profile
         Shortcut for me/picture
@@ -867,18 +918,19 @@ class OpenFacebook(FacebookConnection):
         :returns: string
         '''
         query_dict = QueryDict('', True)
-        if size:
-            query_dict['type'] = size
+        query_dict['type'] = size
         query_dict['access_token'] = self.access_token
 
         url = '%sme/picture?%s' % (self.api_url, query_dict.urlencode())
         return url
 
-    def request(self, path='', post_data=None, old_api=False, **params):
+    def request(self, path='', post_data=None, old_api=False, version=None, **params):
         api_base_url = self.old_api_url if old_api else self.api_url
+        version = version or self.version
         if getattr(self, 'access_token', None):
             params['access_token'] = self.access_token
-        url = '%s%s?%s' % (api_base_url, path, urllib.urlencode(params))
+        url = '%s%s/%s?%s' % (api_base_url, self.version,
+                              path, urlencode(params))
         logger.info('requesting url %s', url)
         response = self._request(url, post_data)
         return response
@@ -889,6 +941,7 @@ class TestUser(object):
     '''
     Simple wrapper around test users
     '''
+
     def __init__(self, data):
         self.name = data['name']
         self.id = data['id']

@@ -1,6 +1,7 @@
 # Django settings for facebook_example project.
 import os
 import django
+import sys
 django_version = django.VERSION
 # some complications related to our travis testing setup
 DJANGO = os.environ.get('DJANGO', '1.5.1')
@@ -9,6 +10,8 @@ CUSTOM_USER_MODEL = bool(int(os.environ.get('CUSTOM_USER_MODEL', '1')))
 
 if DJANGO != '1.5.1':
     CUSTOM_USER_MODEL = False
+
+TESTING = 'test' in sys.argv
 
 FACEBOOK_APP_ID = '215464901804004'
 FACEBOOK_APP_SECRET = '0aceba27823a9dfefa955f76949fa4b4'
@@ -25,11 +28,14 @@ TEMPLATE_CONTEXT_PROCESSORS = [
 
 if django_version >= (1, 4, 0):
     TEMPLATE_CONTEXT_PROCESSORS.append('django.core.context_processors.tz')
-    
+
 AUTHENTICATION_BACKENDS = (
     'django_facebook.auth_backends.FacebookBackend',
     'django.contrib.auth.backends.ModelBackend',
 )
+
+
+SESSION_SERIALIZER = 'django.contrib.sessions.serializers.JSONSerializer'
 
 if CUSTOM_USER_MODEL:
     AUTH_USER_MODEL = 'django_facebook.FacebookCustomUser'
@@ -156,11 +162,15 @@ INSTALLED_APPS = (
     # 'django.contrib.admindocs',
     'django_facebook',
     'member',
-    'south',
     'open_facebook',
+    'django.contrib.admin',
 )
 
-
+if django_version < (1, 7, 0):
+    # south isn't needed by django >= 1.7 since migrations were added.  See:
+    # - https://docs.djangoproject.com/en/dev/topics/migrations/#libraries-third-party-apps
+    # - http://south.readthedocs.org/en/latest/releasenotes/1.0.html#library-migration-path
+    INSTALLED_APPS += ('south',)
 
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to
@@ -218,6 +228,12 @@ CACHES = {
         'LOCATION': '127.0.0.1:11211',
     }
 }
+# Using memcached breaks RTD
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+    }
+}
 
 if MODE == 'django_registration':
     FACEBOOK_REGISTRATION_BACKEND = 'facebook_example.registration_backends.DjangoRegistrationDefaultBackend'
@@ -245,3 +261,5 @@ elif MODE == 'userena':
         'userena',
         'guardian',
     )
+
+FACEBOOK_OG_SHARE_DB_TABLE = 'django_facebook_open_graph_share'

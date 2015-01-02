@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+from django.utils.encoding import python_2_unicode_compatible
 from django.conf import settings
 from django.contrib.contenttypes import generic
 from django.contrib.contenttypes.models import ContentType
@@ -11,6 +13,9 @@ from django_facebook.utils import compatible_datetime as datetime, \
     try_get_profile, update_user_attributes
 from django_facebook.utils import get_user_model
 from open_facebook.exceptions import OAuthException
+import logging
+import os
+logger = logging.getLogger(__name__)
 
 
 def get_user_model_setting():
@@ -20,9 +25,44 @@ def get_user_model_setting():
     return user_model_setting
 
 
-import logging
-import os
-logger = logging.getLogger(__name__)
+def validate_settings():
+    '''
+    Checks our Facebook and Django settings and looks for common errors
+    '''
+    from django.conf import settings
+    from django_facebook import settings as facebook_settings
+
+    if facebook_settings.FACEBOOK_SKIP_VALIDATE:
+        return
+
+    # check for required settings
+    if not facebook_settings.FACEBOOK_APP_ID:
+        logger.warn('Warning FACEBOOK_APP_ID isnt specified')
+    if not facebook_settings.FACEBOOK_APP_SECRET:
+        logger.warn('Warning FACEBOOK_APP_SECRET isnt specified')
+
+    # warn on things which will cause bad performance
+    if facebook_settings.FACEBOOK_STORE_LIKES or facebook_settings.FACEBOOK_STORE_FRIENDS:
+        if not facebook_settings.FACEBOOK_CELERY_STORE:
+            msg = '''Storing friends or likes without using Celery will significantly slow down your login
+Its recommended to enable FACEBOOK_CELERY_STORE or disable FACEBOOK_STORE_FRIENDS and FACEBOOK_STORE_LIKES'''
+            logger.warn(msg)
+
+    # make sure the context processors are present
+    required = ['django_facebook.context_processors.facebook',
+                'django.core.context_processors.request']
+    context_processors = settings.TEMPLATE_CONTEXT_PROCESSORS
+    for context_processor in required:
+        if context_processor not in context_processors:
+            logger.warn(
+                'Required context processor %s wasnt found', context_processor)
+
+    backends = settings.AUTHENTICATION_BACKENDS
+    required = 'django_facebook.auth_backends.FacebookBackend'
+    if required not in backends:
+        logger.warn('Required auth backend %s wasnt found', required)
+
+validate_settings()
 
 
 if facebook_settings.FACEBOOK_PROFILE_IMAGE_PATH:
@@ -58,6 +98,7 @@ class FACEBOOK_OG_STATE:
         pass
 
 
+@python_2_unicode_compatible
 class BaseFacebookModel(models.Model):
 
     '''
@@ -98,8 +139,8 @@ class BaseFacebookModel(models.Model):
             reauthentication = True
         return reauthentication
 
-    def __unicode__(self):
-        return self.user.__unicode__()
+    def __str__(self):
+        return self.get_user().username
 
     class Meta:
         abstract = True
@@ -257,7 +298,9 @@ class FacebookModel(BaseFacebookModel):
 FacebookProfileModel = FacebookModel
 
 
+@python_2_unicode_compatible
 class FacebookUser(models.Model):
+
     '''
     Model for storing a users friends
     '''
@@ -274,7 +317,7 @@ class FacebookUser(models.Model):
     class Meta:
         unique_together = ['user_id', 'facebook_id']
 
-    def __unicode__(self):
+    def __str__(self):
         return u'Facebook user %s' % self.name
 
 
@@ -304,19 +347,20 @@ class FacebookProfile(FacebookProfileModel):
     '''
     user = models.OneToOneField(get_user_model_setting())
 
+if getattr(settings, 'AUTH_USER_MODEL', None) == 'django_facebook.FacebookCustomUser':
+    try:
+        from django.contrib.auth.models import AbstractUser, UserManager
 
-try:
-    from django.contrib.auth.models import AbstractUser, UserManager
+        class FacebookCustomUser(AbstractUser, FacebookModel):
 
-    class FacebookCustomUser(AbstractUser, FacebookModel):
-        '''
-        The django 1.5 approach to adding the facebook related fields
-        '''
-        objects = UserManager()
-        # add any customizations you like
-        state = models.CharField(max_length=255, blank=True, null=True)
-except ImportError, e:
-    logger.info('Couldnt setup FacebookUser, got error %s', e)
+            '''
+            The django 1.5 approach to adding the facebook related fields
+            '''
+            objects = UserManager()
+            # add any customizations you like
+            state = models.CharField(max_length=255, blank=True, null=True)
+    except ImportError as e:
+        logger.info('Couldnt setup FacebookUser, got error %s', e)
 
 
 class BaseModelMetaclass(ModelBase):
@@ -342,6 +386,7 @@ class BaseModelMetaclass(ModelBase):
         return super_new
 
 
+@python_2_unicode_compatible
 class BaseModel(models.Model):
 
     '''
@@ -349,7 +394,7 @@ class BaseModel(models.Model):
     '''
     __metaclass__ = BaseModelMetaclass
 
-    def __unicode__(self):
+    def __str__(self):
         '''
         Looks at some common ORM naming standards and tries to display those before
         default to the django default
@@ -367,6 +412,7 @@ class BaseModel(models.Model):
         abstract = True
 
 
+@python_2_unicode_compatible
 class CreatedAtAbstractBase(BaseModel):
 
     '''
@@ -387,7 +433,7 @@ class CreatedAtAbstractBase(BaseModel):
         saved = models.Model.save(self, *args, **kwargs)
         return saved
 
-    def __unicode__(self):
+    def __str__(self):
         '''
         Looks at some common ORM naming standards and tries to display those before
         default to the django default
@@ -415,7 +461,8 @@ class OpenGraphShare(BaseModel):
     Used for statistics and evaluating how things are going
 
     I recommend running this in a task
-    Example usage:
+    **Example usage**::
+
         from user.models import OpenGraphShare
         user = UserObject
         url = 'http://www.fashiolista.com/'
@@ -430,19 +477,22 @@ class OpenGraphShare(BaseModel):
         share.save()
         result = share.send()
 
-    Advanced usage:
+    **Advanced usage**::
+
         share.send()
         share.update(message='Hello world')
         share.remove()
         share.retry()
 
     Using this model has the advantage that it allows us to
+
     - remove open graph shares (since we store the Facebook id)
+
     - retry open graph shares, which is handy in case of
-      - updated access tokens (retry all shares from this user in the last
-        facebook_settings.FACEBOOK_OG_SHARE_RETRY_DAYS)
-      - Facebook outages (Facebook often has minor interruptions, retry in 15m,
-        for max facebook_settings.FACEBOOK_OG_SHARE_RETRIES)
+
+      - updated access tokens (retry all shares from this user in the last facebook_settings.FACEBOOK_OG_SHARE_RETRY_DAYS)
+
+      - Facebook outages (Facebook often has minor interruptions, retry in 15m, for max facebook_settings.FACEBOOK_OG_SHARE_RETRIES)
     '''
     objects = model_managers.OpenGraphShareManager()
 
@@ -483,7 +533,7 @@ class OpenGraphShare(BaseModel):
                 self.user, profile, 'facebook_id')
         return BaseModel.save(self, *args, **kwargs)
 
-    def send(self, graph=None):
+    def send(self, graph=None, shared_explicitly=False):
         result = None
         # update the last attempt
         self.last_attempt = datetime.now()
@@ -494,8 +544,9 @@ class OpenGraphShare(BaseModel):
         user_or_profile = get_instance_for_attribute(
             self.user, profile, 'access_token')
         graph = graph or user_or_profile.get_offline_graph()
-        user_enabled = user_or_profile.facebook_open_graph and self.facebook_user_id
-
+        user_enabled = shared_explicitly or \
+            (user_or_profile.facebook_open_graph
+             and self.facebook_user_id)
         # start sharing
         if graph and user_enabled:
             graph_location = '%s/%s' % (
@@ -514,9 +565,9 @@ class OpenGraphShare(BaseModel):
                 self.error_message = None
                 self.completed_at = datetime.now()
                 self.save()
-            except OpenFacebookException, e:
+            except OpenFacebookException as e:
                 logger.warn(
-                    'Open graph share failed, writing message %s' % e.message)
+                    'Open graph share failed, writing message %s' % str(e))
                 self.error_message = repr(e)
                 self.save()
                 # maybe we need a new access token
@@ -628,48 +679,3 @@ class OpenGraphShare(BaseModel):
         old_share_dict.update(share_dict)
         self.set_share_dict(old_share_dict)
         return old_share_dict
-
-
-class FacebookInvite(CreatedAtAbstractBase):
-    user = models.ForeignKey(get_user_model_setting())
-    user_invited = models.CharField(max_length=255)
-    message = models.TextField(blank=True, null=True)
-    type = models.CharField(blank=True, null=True, max_length=255)
-
-    # status data
-    wallpost_id = models.CharField(blank=True, null=True, max_length=255)
-    error = models.BooleanField(default=False)
-    error_message = models.TextField(blank=True, null=True)
-    last_attempt = models.DateTimeField(
-        blank=True, null=True, auto_now_add=True)
-
-    # reminder data
-    reminder_wallpost_id = models.CharField(
-        blank=True, null=True, max_length=255)
-    reminder_error = models.BooleanField(default=False)
-    reminder_error_message = models.TextField(blank=True, null=True)
-    reminder_last_attempt = models.DateTimeField(
-        blank=True, null=True, auto_now_add=True)
-
-    def __unicode__(self):
-        message = 'user %s invited fb id %s' % (self.user, self.user_invited)
-        return message
-
-    def resend(self, graph=None):
-        from django_facebook.invite import post_on_profile
-
-        profile = try_get_profile(self.user)
-        user_or_profile = get_instance_for_attribute(
-            self.user, profile, 'access_token')
-        graph = graph or user_or_profile.get_offline_graph()
-
-        if not graph:
-            return
-
-        facebook_id = self.user_invited
-        invite_result = post_on_profile(
-            self.user, graph, facebook_id, self.message, force_send=True)
-        return invite_result
-
-    class Meta:
-        unique_together = ('user', 'user_invited')
