@@ -653,6 +653,8 @@ class OpenFacebook(FacebookConnection):
 
     '''
 
+    version = 'v2.2'
+
     def __init__(self, access_token=None, prefetched_data=None,
                  expires=None, current_user_id=None, version=None):
         '''
@@ -670,9 +672,8 @@ class OpenFacebook(FacebookConnection):
         # facebook connection to a logged in user :)
         self.current_user_id = current_user_id
 
-        if version is None:
-            version = 'v1.0'
-        self.version = version
+        if version is not None:
+	    self.version = version
 
     def __getstate__(self):
         '''
