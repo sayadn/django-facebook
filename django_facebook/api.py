@@ -617,7 +617,7 @@ class FacebookUserConverter(object):
                 # parse URL to get limit, offset and __after_id from it
                 from urlparse import urlsplit, parse_qsl
                 o = urlsplit(next_page)
-                params = parse_qsl(o.query)
+                params = dict(parse_qsl(o.query))
             
                 tmp_friends.extend(_get_friends(params))
             return tmp_friends
