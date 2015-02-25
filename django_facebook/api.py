@@ -604,18 +604,27 @@ class FacebookUserConverter(object):
         '''
         Connects to the facebook api and gets the users friends
         '''
+
+        def _get_friends(params={'limit': 5000}):
+            tmp_friends = []
+            friends_response = self.open_facebook.get('me/friends', **params)
+            tmp_friends.extend(friends_response.get('data'))
+
+            next_page = friends_response.get('paging', {}).get('next')
+            if next_page:
+                # if there's  a next page continue walking
+
+                # parse URL to get limit, offset and __after_id from it
+                from urlparse import urlsplit, parse_qsl
+                o = urlsplit(next_page)
+                params = parse_qsl(o.query)
+            
+                tmp_friends.extend(_get_friends(params))
+            return tmp_friends
+
         friends = getattr(self, '_friends', None)
         if friends is None:
-            friends_response = self.open_facebook.fql(
-                "SELECT uid, name, sex FROM user WHERE uid IN (SELECT uid2 "
-                "FROM friend WHERE uid1 = me()) LIMIT %s" % limit)
-            # friends_response = self.open_facebook.get('me/friends',
-            #                                           limit=limit)
-            # friends = friends_response and friends_response.get('data')
-            friends = []
-            for response_dict in friends_response:
-                response_dict['id'] = response_dict['uid']
-                friends.append(response_dict)
+            friends = _get_friends()
 
         logger.info('found %s friends', len(friends))
 
@@ -641,23 +650,12 @@ class FacebookUserConverter(object):
         if friends:
             # see which ids this user already stored
             base_queryset = FacebookUser.objects.filter(user_id=user.id)
-            # if none if your friend have a gender clean the old data
-            genders = FacebookUser.objects.filter(
-                user_id=user.id, gender__in=('M', 'F')).count()
-            if not genders:
-                FacebookUser.objects.filter(user_id=user.id).delete()
 
             global_defaults = dict(user_id=user.id)
             default_dict = {}
-            gender_map = dict(female='F', male='M')
-            gender_map['male (hidden)'] = 'M'
-            gender_map['female (hidden)'] = 'F'
             for f in friends:
                 name = f.get('name')
-                gender = None
-                if f.get('sex'):
-                    gender = gender_map[f.get('sex')]
-                default_dict[str(f['id'])] = dict(name=name, gender=gender)
+                default_dict[str(f['id'])] = dict(name=name)
             id_field = 'facebook_id'
 
             current_friends, inserted_friends = mass_get_or_create(
